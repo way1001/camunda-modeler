@@ -10,74 +10,27 @@
 
 import AuthTypes from '../../shared/AuthTypes';
 
-import { default as CamundaAPI, ApiErrorMessages } from '../../shared/CamundaAPI';
+import pDefer from 'p-defer';
 
-import EndpointURLValidator from './EndpointURLValidator';
 
-import DefaultInputValidator from './DefaultInputValidator';
+export default class DeploymentPluginValidator {
 
-export default class DeploymentConfigValidator {
-
-  constructor() {
-    this.endpointURLValidator = new EndpointURLValidator(
-      'endpoint.url',
-      this.validateNonEmpty,
-      this.validatePattern,
-      this.validateConnectionWithoutCredentials
-    );
-
-    this.deploymentNameValidator = new DefaultInputValidator(
-      'deployment.name',
-      this.validateNonEmpty,
-      'Deployment name must not be empty.'
-    );
-
-    this.usernameValidator = new DefaultInputValidator(
-      'endpoint.username',
-      this.validateNonEmpty,
-      'Credentials are required to connect to the server.'
-    );
-
-    this.passwordValidator = new DefaultInputValidator(
-      'endpoint.password',
-      this.validateNonEmpty,
-      'Credentials are required to connect to the server.'
-    );
-
-    this.tokenValidator = new DefaultInputValidator(
-      'endpoint.token',
-      this.validateNonEmpty,
-      'Token must not be empty.'
-    );
-
-    this.lastConnectionCheckID = 0;
+  constructor(camundaAPI) {
+    this.camundaAPI = camundaAPI;
   }
 
-  resetCancel = () => {
-    this.endpointURLValidator.resetCancel();
+  createConnectionChecker() {
+    return new ConnectionChecker(this);
   }
 
-  cancel = () => {
-    this.endpointURLValidator.cancel();
+  validateNonEmpty = (value, message = 'Must provide a value.') => {
+    return value ? null : message;
   }
 
-  onExternalError = (authType, details, code, setFieldError) => {
-    if (code === 'UNAUTHORIZED') {
-      if (authType === AuthTypes.basic) {
-        this.usernameValidator.onExternalError(details, setFieldError);
-        this.passwordValidator.onExternalError(details, setFieldError);
-      } else {
-        this.tokenValidator.onExternalError(details, setFieldError);
-      }
-    } else {
-      this.endpointURLValidator.onExternalError(details, setFieldError);
-    }
-  }
-
-  validateEndpointURL = (value, setFieldError, isOnBeforeSubmit, onAuthDetection, onConnectionStatusUpdate) => {
-    return this.endpointURLValidator.validate(
-      value, setFieldError, isOnBeforeSubmit, onAuthDetection, onConnectionStatusUpdate
-    );
+  validateEndpointURL = value => {
+    return this.validateNonEmpty(value,'Endpoint URL must not be empty.') ||
+      this.validatePattern(value, /^https?:\/\//, 'Endpoint URL must start with "http://" or "https://".') ||
+      this.validatePattern(value, /^https?:\/\/.+/, 'Should point to a running Camunda Engine REST API.');
   }
 
   validatePattern = (value, pattern, message) => {
@@ -86,30 +39,35 @@ export default class DeploymentConfigValidator {
     return matches ? null : message;
   }
 
-  validateNonEmpty = (value, message = 'Must provide a value.') => {
-    return value ? null : message;
+  validateConnection = (endpoint) => {
+    return this.camundaAPI.checkConnection(endpoint);
+  }
+
+  validateConfig = config => {
+    const endpointErrors = this.validateEndpoint(config.endpoint);
+    const deploymentErrors = this.validateDeployment(config.deployment);
+
+    return { ...endpointErrors, ...deploymentErrors };
   }
 
   validateDeploymentName = (value, isOnBeforeSubmit) => {
-    return this.deploymentNameValidator.validate(value, isOnBeforeSubmit);
+    return this.validateNonEmpty(value, 'Deployment name must not be empty.');
   }
 
-  validateToken = (value, isOnBeforeSubmit) => {
-    return this.tokenValidator.validate(value, isOnBeforeSubmit);
+  validateToken = (value) => {
+    return this.validateNonEmpty(value, 'Token must not be empty.');
   }
 
-  validatePassword = (value, isOnBeforeSubmit) => {
-    return this.passwordValidator.validate(value, isOnBeforeSubmit);
+  validatePassword = (value) => {
+    return this.validateNonEmpty(value, 'Credentials are required to connect to the server.');
   }
 
-  validateUsername = (value, isOnBeforeSubmit) => {
-    return this.usernameValidator.validate(value, isOnBeforeSubmit);
+  validateUsername = (value) => {
+    return this.validateNonEmpty(value, 'Credentials are required to connect to the server.');
   }
 
   validateDeployment(deployment = {}) {
-    return this.validate(deployment, {
-      name: this.validateDeploymentName
-    });
+    return this.validate(deployment, { name: this.validateDeploymentName });
   }
 
   validateEndpoint(endpoint = {}) {
@@ -141,68 +99,168 @@ export default class DeploymentConfigValidator {
 
     return errors;
   }
+}
 
-  validateConnection = async endpoint => {
+class ConnectionChecker {
 
-    const api = new CamundaAPI(endpoint);
+  constructor(validator) {
+    this.validator = validator;
+  }
 
-    try {
-      await api.checkConnection();
-    } catch (error) {
-      return error;
+  subscribe(hooks) {
+    this.hooks = hooks;
+  }
+
+  unsubscribe() {
+
+    if (this.checkTimer) {
+      clearTimeout(this.checkTimer);
+
+      this.checkTimer = null;
     }
 
-    return null;
+    this.endpoint = null;
+
+    this.lastCheck = null;
+
+    this.hooks = null;
   }
 
-  validateConnectionWithoutCredentials = async (url) => {
-    this.lastConnectionCheckID ++;
-    const lastConnectionCheckID = this.lastConnectionCheckID;
-    const result = await this.validateConnection({ url });
-
-    if (this.lastConnectionCheckID != lastConnectionCheckID) {
-
-      // URL has changed while we were waiting for the response of an older request
-      return { isExpired: true };
-    }
-    return result;
-  }
-
-  clearEndpointURLError = (setFieldError) => {
-    this.endpointURLValidator.clearError(setFieldError);
-  }
-
-  updateEndpointURLError = (code, setFieldError) => {
-
-    const errorMessage = ApiErrorMessages[code];
-    this.endpointURLValidator.updateError(setFieldError, errorMessage);
-  }
-
-  validateBasic(configuration) {
+  check(endpoint) {
+    this.setEndpoint(endpoint);
 
     const {
-      deployment,
-      endpoint
-    } = configuration;
+      lastCheck
+    } = this;
 
-    const deploymentErrors = this.validateDeployment(deployment);
-    const endpointErrors = this.validateEndpoint(endpoint);
+    // return cached result if endpoint did not change
+    // we'll periodically re-check in background anyway
+    if (lastCheck && shallowEquals(endpoint, lastCheck.endpoint)) {
+      return Promise.resolve(lastCheck.result);
+    }
 
-    return filterErrors({
-      deployment: deploymentErrors,
-      endpoint: endpointErrors
+    const deferred = this.scheduleCheck();
+
+    return deferred.promise;
+  }
+
+  setEndpoint(endpoint) {
+    this.endpoint = endpoint;
+  }
+
+  checkCompleted(endpoint, result) {
+
+    const {
+      endpoint: currentEndpoint,
+      deferred,
+      hooks
+    } = this;
+
+    if (!shallowEquals(endpoint, currentEndpoint)) {
+      return;
+    }
+
+    const {
+      endpointErrors
+    } = result;
+
+    this.lastCheck = {
+      endpoint,
+      result
+    };
+
+    this.deferred = null;
+
+    deferred.resolve(result);
+
+    hooks && hooks.onComplete && hooks.onComplete(result);
+
+    if (!hasKeys(endpointErrors)) {
+      this.scheduleCheck();
+    }
+  }
+
+  checkStart() {
+
+    const {
+      hooks
+    } = this;
+
+    hooks && hooks.onStart && hooks.onStart();
+  }
+
+  scheduleCheck() {
+
+    const {
+      endpoint,
+      lastCheck,
+      checkTimer,
+      validator
+    } = this;
+
+    const deferred = this.deferred = this.deferred || pDefer();
+
+    // stop scheduled check
+    if (checkTimer) {
+      clearTimeout(checkTimer);
+    }
+
+    const endpointErrors = validator.validateEndpoint(endpoint);
+
+    if (hasKeys(endpointErrors)) {
+      this.checkCompleted(endpoint, {
+        endpointErrors
+      });
+    } else {
+
+      const delay = this.getCheckDelay(endpoint, lastCheck);
+
+      this.checkTimer = setTimeout(() => {
+        this.triggerCheck();
+      }, delay);
+    }
+
+    return deferred;
+  }
+
+  triggerCheck() {
+    const {
+      endpoint,
+      validator
+    } = this;
+
+    this.checkStart();
+
+    validator.validateConnection(endpoint).then(connectionResult => {
+
+      this.checkCompleted(endpoint, {
+        connectionResult
+      });
+
+    }).catch(error => {
+      console.error('connection check failed', error);
     });
   }
 
-  isConfigurationValid(configuration) {
+  getCheckDelay(endpoint, lastCheck) {
 
-    const errors = this.validateBasic(configuration);
+    if (!lastCheck) {
+      return 1000;
+    }
 
-    return !hasKeys(errors);
+    const {
+      endpoint: lastEndpoint
+    } = lastCheck;
+
+    const endpointChanged = !shallowEquals(endpoint, lastEndpoint);
+
+    if (endpointChanged) {
+      return 1000;
+    }
+
+    return 5000;
   }
-
 }
-
 
 // helpers /////////////////
 
@@ -210,14 +268,10 @@ function hasKeys(obj) {
   return obj && Object.keys(obj).length > 0;
 }
 
-function filterErrors(errors) {
+function hash(el) {
+  return JSON.stringify(el);
+}
 
-  return Object.entries(errors).reduce((filtered, [ key, value ]) => {
-
-    if (value && hasKeys(value)) {
-      filtered[key] = value;
-    }
-
-    return filtered;
-  }, {});
+function shallowEquals(a, b) {
+  return hash(a) === hash(b);
 }

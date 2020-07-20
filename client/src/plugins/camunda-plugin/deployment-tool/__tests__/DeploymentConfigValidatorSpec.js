@@ -21,9 +21,6 @@ const EMPTY_TOKEN_ERROR = 'Token must not be empty.';
 const INVALID_URL_ERROR = 'Endpoint URL must start with "http://" or "https://".';
 const NON_COMPLETE_ERROR = 'Should point to a running Camunda Engine REST API.';
 
-const ENDPOINT_URL_FIELDNAME = 'endpoint.url';
-
-const noop = () => {};
 
 describe('<DeploymentConfigValidator>', () => {
 
@@ -33,14 +30,14 @@ describe('<DeploymentConfigValidator>', () => {
   let validator;
 
   beforeEach(() => {
-    validator = new DeploymentConfigValidator();
+    validator = new DeploymentConfigValidator(createCamundaAPI());
   });
 
 
   it('should validate deployment name', () => {
 
     // given
-    const validate = name => validator.validateDeploymentName(name, true);
+    const validate = name => validator.validateDeploymentName(name);
 
     // then
     expect(validate()).to.eql(EMPTY_DEPLOYMENT_NAME_ERROR);
@@ -69,7 +66,7 @@ describe('<DeploymentConfigValidator>', () => {
   it('should validate username', () => {
 
     // given
-    const validate = username => validator.validateUsername(username, true);
+    const validate = username => validator.validateUsername(username);
 
     // then
     expect(validate()).to.eql(EMPTY_USERNAME_ERROR);
@@ -81,7 +78,7 @@ describe('<DeploymentConfigValidator>', () => {
   it('should validate password', () => {
 
     // given
-    const validate = password => validator.validatePassword(password, true);
+    const validate = password => validator.validatePassword(password);
 
     // then
     expect(validate()).to.eql(EMPTY_PASSWORD_ERROR);
@@ -93,7 +90,7 @@ describe('<DeploymentConfigValidator>', () => {
   it('should validate token', () => {
 
     // given
-    const validate = token => validator.validateToken(token, true);
+    const validate = token => validator.validateToken(token);
 
     // then
     expect(validate()).to.eql(EMPTY_TOKEN_ERROR);
@@ -102,221 +99,150 @@ describe('<DeploymentConfigValidator>', () => {
   });
 
 
-  it('should validate endpoint URL completeness delayed if not submitting', (done) => {
+  it('should validate endpoint URL completeness', () => {
 
     // given
-    const setFieldErrorSpy = sinon.spy();
-    const onAuthDetection = noop;
-    const isOnBeforeSubmit = false;
-
     const nonCompleteURL = 'https://';
 
     // when
-    const result = validator.validateEndpointURL(
-      nonCompleteURL, setFieldErrorSpy, isOnBeforeSubmit, onAuthDetection
-    );
-
-    // then
-    expect(result).to.be.null;
-    expect(setFieldErrorSpy).to.not.have.been.called;
-    setTimeout(() => {
-      expect(setFieldErrorSpy).to.have.been.calledWith(ENDPOINT_URL_FIELDNAME, NON_COMPLETE_ERROR);
-      done();
-    }, 1001);
-  });
-
-
-  it('should validate endpoint URL completeness non delayed if submitting', () => {
-
-    // given
-    const setFieldErrorSpy = noop;
-    const onAuthDetection = noop;
-    const isOnBeforeSubmit = true;
-
-    const nonCompleteURL = 'https://';
-
-    // when
-    const result = validator.validateEndpointURL(
-      nonCompleteURL, setFieldErrorSpy, isOnBeforeSubmit, onAuthDetection
-    );
+    const result = validator.validateEndpointURL(nonCompleteURL);
 
     // then
     expect(result).to.be.eql(NON_COMPLETE_ERROR);
   });
 
 
-  it('should discard timed out connection checks', async () => {
+  describe('<ConnectionChecker>', () => {
 
-    // given
-    validator.validateConnection = () => new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          isSuccessful: true
-        });
-      }, 200);
+    it('should be created', () => {
+
+      // given
+      const connectionChecker = createConnectionChecker();
+
+      // then
+      expect(connectionChecker).to.exist;
     });
 
-    // when
-    const check1 = validator.validateConnectionWithoutCredentials('url1');
-    const check2 = validator.validateConnectionWithoutCredentials('url2');
 
-    const oldResponse = await check1;
-    const newResponse = await check2;
+    describe('#check', () => {
 
-    // then
-    expect(oldResponse).to.eql({ isExpired: true });
-    expect(newResponse).to.eql({ isSuccessful: true });
-  });
+      it('should work', async () => {
 
+        // given
+        const connectionChecker = createConnectionChecker();
 
-  it('should skip deployment name validation after submission if not resubmitted', () => {
+        // when
+        const { connectionResult } = await connectionChecker.check({});
 
-    // given
-    const {
-      validateDeploymentName
-    } = validator;
-
-    // when
-    expect(validateDeploymentName(null, false)).to.eql(null);
-    expect(validateDeploymentName(undefined, false)).to.eql(null);
-    expect(validateDeploymentName('', false)).to.eql(null);
-  });
-
-
-  it('should skip username validation after submission if not resubmitted', () => {
-
-    // given
-    const {
-      validateUsername
-    } = validator;
-
-    // when
-    expect(validateUsername(null, false)).to.eql(null);
-    expect(validateUsername(undefined, false)).to.eql(null);
-    expect(validateUsername('', false)).to.eql(null);
-  });
-
-
-  it('should skip password validation after submission if not resubmitted', () => {
-
-    // given
-    const {
-      validatePassword
-    } = validator;
-
-    // when
-    expect(validatePassword(null, false)).to.eql(null);
-    expect(validatePassword(undefined, false)).to.eql(null);
-    expect(validatePassword('', false)).to.eql(null);
-  });
-
-
-  it('should have sticky username errors', () => {
-
-    // given
-    const {
-      onExternalError,
-      usernameValidator,
-      validateUsername
-    } = validator;
-
-    usernameValidator.setCachedValue('username');
-
-    // when
-    onExternalError(AuthTypes.basic, 'error', 'UNAUTHORIZED', noop);
-
-    // then
-    expect(validateUsername('username', false)).to.eql('error');
-  });
-
-
-  it('should have sticky password errors', () => {
-
-    // given
-    const {
-      onExternalError,
-      passwordValidator,
-      validatePassword
-    } = validator;
-
-    passwordValidator.setCachedValue('password');
-
-    // when
-    onExternalError(AuthTypes.basic, 'error', 'UNAUTHORIZED', noop);
-
-    // then
-    expect(validatePassword('password', false)).to.eql('error');
-  });
-
-
-  it('should have sticky token errors', () => {
-
-    // given
-    const {
-      onExternalError,
-      tokenValidator,
-      validateToken
-    } = validator;
-
-    tokenValidator.setCachedValue('token');
-
-    // when
-    onExternalError(AuthTypes.bearer, 'error', 'UNAUTHORIZED', noop);
-
-    // then
-    expect(validateToken('token', false)).to.eql('error');
-  });
-
-
-  it('should notify connection status to parent', (done) => {
-
-    // given
-    const setFieldError = noop;
-    const onAuthDetection = noop;
-    const isOnBeforeSubmit = false;
-    const onConnectionStatusUpdate = sinon.spy();
-
-    const url = 'https://test.com';
-
-    // when
-    validator.endpointURLValidator.validateConnectionWithoutCredentials = () => {
-      return new Promise((resolve, reject) => {
-        resolve({
-          code: 'CONNECTION_FAILED'
-        });
+        // then
+        expect(connectionResult).to.be.undefined;
       });
-    };
-
-    validator.validateEndpointURL(
-      url, setFieldError, isOnBeforeSubmit, onAuthDetection, onConnectionStatusUpdate
-    );
-
-    // then
-    setTimeout(() => {
-      expect(onConnectionStatusUpdate).to.have.been.calledWith('CONNECTION_FAILED');
-      done();
-    }, 1500);
-  });
 
 
-  it('should cancel endpoint url validation', (done) => {
+      it('should return last result if endpoint did not change', async () => {
 
-    // given
-    const onConnectionStatusUpdate = sinon.spy();
+        // given
+        const spy = sinon.spy(() => Promise.resolve());
+        const endpoint = {
+          url: 'http://localhost:8080'
+        };
+        const connectionChecker = createConnectionChecker(spy);
 
-    validator.validateConnectionWithoutCredentials = () => new Promise((resolve) => {
-      setTimeout(() => { resolve({}); }, 100);
+        // when
+        await connectionChecker.check(endpoint);
+        await connectionChecker.check(endpoint);
+
+        // then
+        expect(spy).to.have.been.calledOnce;
+      });
+
+
+      it('should check again if endpoint changed', async () => {
+
+        // given
+        const spy = sinon.spy(() => Promise.resolve({ success: true, response: {} }));
+        const endpoint = {
+          url: 'http://localhost:8080'
+        };
+        const connectionChecker = createConnectionChecker(spy);
+
+        // when
+        await connectionChecker.check(endpoint);
+        await connectionChecker.check({ url: endpoint.url + '/new' });
+
+        // then
+        expect(spy).to.have.been.calledTwice;
+      });
+
     });
 
-    validator.endpointURLValidator.setTimeout('http://test.com', noop, noop, onConnectionStatusUpdate);
 
-    // when
-    validator.cancel();
+    describe('#subscribe', () => {
 
-    // then
-    setTimeout(() => {
-      expect(onConnectionStatusUpdate).to.not.have.been.called;
-      done();
-    }, 1000);
+      it('should work', async () => {
+
+        // given
+        const onStart = sinon.spy();
+        const onComplete = sinon.spy();
+        const connectionChecker = createConnectionChecker();
+        connectionChecker.subscribe({ onStart, onComplete });
+
+        // when
+        const result = await connectionChecker.check({ url: 'http://localhost:8080' });
+
+        // then
+        expect(onStart).to.have.been.calledOnce;
+        expect(onComplete).to.have.been.calledOnce;
+        expect(onComplete.args).to.eql([ [ result ] ]);
+      });
+
+    });
+
+
+    describe('#unsubscribe', () => {
+
+      it('should work', async () => {
+
+        // given
+        const onStart = sinon.spy();
+        const onComplete = sinon.spy();
+        const connectionChecker = createConnectionChecker();
+        connectionChecker.subscribe({ onStart, onComplete });
+        connectionChecker.unsubscribe();
+
+        // when
+        await connectionChecker.check({ url: 'http://localhost:8080' });
+
+        // then
+        expect(onStart).not.to.have.been.called;
+        expect(onComplete).not.to.have.been.called;
+      });
+
+    });
+
   });
 });
+
+
+
+// helper
+function createConnectionChecker(checkConnectivity, useRealDelays) {
+  const camundaAPI = createCamundaAPI(checkConnectivity);
+  const validator = new DeploymentConfigValidator(camundaAPI);
+
+  const connectionChecker = validator.createConnectionChecker();
+
+  if (!useRealDelays) {
+    connectionChecker.getCheckDelay = () => 0;
+  }
+
+  return connectionChecker;
+}
+
+function createCamundaAPI(checkConnection) {
+  const mockCheck = () => Promise.resolve({ success: true, response: {} });
+
+  return {
+    checkConnection: checkConnection || mockCheck
+  };
+}
