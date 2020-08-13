@@ -39,13 +39,14 @@ const ENCODING_BASE64 = 'base64',
  * @param {string} filePath - Filepath.
  * @param {Object} [options] - Options.
  * @param {string} [options.encoding] - Encoding.
+ * @param {boolean} [options.asBuffer] - Read file as buffer.
  *
  * @return {Object}
  */
 module.exports.readFile = function(filePath, options = {}) {
-  let { encoding } = options;
+  let { encoding, asBuffer } = options;
 
-  if (!encoding) {
+  if (!encoding && !asBuffer) {
     encoding = ENCODING_UTF8;
   }
 
