@@ -30,7 +30,7 @@ describe('<DeploymentConfigValidator>', () => {
   let validator;
 
   beforeEach(() => {
-    validator = new DeploymentConfigValidator(createCamundaAPI());
+    validator = new DeploymentConfigValidator(MockCamundaApi);
   });
 
 
@@ -227,8 +227,11 @@ describe('<DeploymentConfigValidator>', () => {
 
 // helper
 function createConnectionChecker(checkConnectivity, useRealDelays) {
-  const camundaAPI = createCamundaAPI(checkConnectivity);
-  const validator = new DeploymentConfigValidator(camundaAPI);
+  function CamundaAPI() {
+    return createCamundaAPI(checkConnectivity);
+  }
+
+  const validator = new DeploymentConfigValidator(CamundaAPI);
 
   const connectionChecker = validator.createConnectionChecker();
 
@@ -237,6 +240,10 @@ function createConnectionChecker(checkConnectivity, useRealDelays) {
   }
 
   return connectionChecker;
+}
+
+function MockCamundaApi() {
+  return createCamundaAPI();
 }
 
 function createCamundaAPI(checkConnection) {

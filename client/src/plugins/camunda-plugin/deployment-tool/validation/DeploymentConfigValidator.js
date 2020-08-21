@@ -40,7 +40,9 @@ export default class DeploymentPluginValidator {
   }
 
   validateConnection = (endpoint) => {
-    return this.camundaAPI.checkConnection(endpoint);
+    const api = new this.camundaAPI(endpoint);
+
+    return api.checkConnection();
   }
 
   validateConfig = config => {

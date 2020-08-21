@@ -280,7 +280,7 @@ describe('<DeploymentTool>', () => {
           deploySpy
         });
 
-        instance.validator.validateConnectionWithoutCredentials = () => new Promise((resolve) => {
+        instance.validator.validateConnection = () => new Promise((resolve) => {
           resolve(null);
         });
 

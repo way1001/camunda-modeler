@@ -735,23 +735,6 @@ describe('<DeploymentConfigModal>', () => {
     // then
     expect(validateConnection).to.not.have.been.calledWith(valuesCache.endpoint);
   });
-
-
-  it('should reset validator cancel flag when mounted', () => {
-
-    // given
-    const resetCancel = sinon.spy();
-
-    const validator = new MockValidator({ resetCancel });
-
-    // when
-    createModal({
-      validator
-    }, mount);
-
-    // then
-    expect(resetCancel).to.have.been.called;
-  });
 });
 
 

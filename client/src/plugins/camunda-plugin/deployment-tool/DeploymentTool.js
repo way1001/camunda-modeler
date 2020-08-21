@@ -48,7 +48,7 @@ export default class DeploymentTool extends PureComponent {
     activeTab: null
   }
 
-  validator = new DeploymentConfigValidator();
+  validator = new DeploymentConfigValidator(CamundaAPI);
 
   componentDidMount() {
     this.props.subscribe('app.activeTabChanged', ({ activeTab }) => {
@@ -296,9 +296,6 @@ export default class DeploymentTool extends PureComponent {
           modalState: null
         });
 
-        // inform validator to cancel ongoing requests
-        this.validator.cancel();
-
         // contract: if configuration provided, user closed with O.K.
         // otherwise they canceled it
         return resolve({ action, configuration });
@@ -385,7 +382,12 @@ export default class DeploymentTool extends PureComponent {
   }
 
   async isTomcatRunning() {
-    const result = await this.validator.validateConnectionWithoutCredentials(TOMCAT_DEFAULT_URL);
+    let result;
+    try {
+      result = await this.validator.validateConnection({ url: TOMCAT_DEFAULT_URL });
+    } catch (error) {
+      result = error;
+    }
 
     if (!result) {
       return true;
