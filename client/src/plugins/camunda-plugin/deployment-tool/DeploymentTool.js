@@ -209,24 +209,6 @@ export default class DeploymentTool extends PureComponent {
     return configuration;
   }
 
-  removeCredentials = async () => {
-    const savedConfiguration = await this.getSavedConfiguration(this.state.activeTab);
-    const omited = omit(savedConfiguration.endpoint, ['username', 'password', 'token']);
-    this.saveEndpoint({
-      ...omited,
-      rememberCredentials: false
-    });
-  }
-
-  saveCredential = async (credential) => {
-    const savedConfiguration = await this.getSavedConfiguration(this.state.activeTab);
-    this.saveEndpoint({
-      ...savedConfiguration.endpoint,
-      rememberCredentials: true,
-      ...credential
-    });
-  }
-
   async saveEndpoint(endpoint) {
 
     const {
@@ -382,14 +364,9 @@ export default class DeploymentTool extends PureComponent {
   }
 
   async isTomcatRunning() {
-    let result;
-    try {
-      result = await this.validator.validateConnection({ url: TOMCAT_DEFAULT_URL });
-    } catch (error) {
-      result = error;
-    }
+    const result = await this.validator.validateConnection({ url: TOMCAT_DEFAULT_URL });
 
-    if (!result) {
+    if (result.success) {
       return true;
     }
 
@@ -425,8 +402,6 @@ export default class DeploymentTool extends PureComponent {
         primaryAction={ modalState.primaryAction }
         onClose={ modalState.handleClose }
         validator={ this.validator }
-        saveCredential={ this.saveCredential }
-        removeCredentials={ this.removeCredentials }
         subscribeToFocusChange={ this.subscribeToFocusChange }
         unsubscribeFromFocusChange={ this.unsubscribeFromFocusChange }
       />

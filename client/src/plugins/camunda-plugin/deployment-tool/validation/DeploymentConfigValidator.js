@@ -39,10 +39,16 @@ export default class DeploymentPluginValidator {
     return matches ? null : message;
   }
 
-  validateConnection = (endpoint) => {
+  validateConnection = async (endpoint) => {
     const api = new this.camundaAPI(endpoint);
 
-    return api.checkConnection();
+    try {
+      await api.checkConnection();
+
+      return { success: true };
+    } catch (error) {
+      return error;
+    }
   }
 
   validateConfig = config => {

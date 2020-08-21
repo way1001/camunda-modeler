@@ -24,7 +24,7 @@ import DeploymentConfigValidator from '../validation/DeploymentConfigValidator';
 
 let mounted;
 
-describe('<DeploymentConfigModal>', () => {
+describe.only('<DeploymentConfigModal>', () => {
 
   it('should render', () => {
     createModal();
