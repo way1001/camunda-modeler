@@ -49,7 +49,8 @@ export default class DeploymentConfigModal extends React.PureComponent {
 
     this.state = {
       isAuthNeeded: false,
-      connectionState: { type: CONNECTION_STATE.INITIAL }
+      connectionState: { type: CONNECTION_STATE.INITIAL },
+      submittedOnce: false
     };
 
     this.connectionChecker = props.validator.createConnectionChecker();
@@ -125,7 +126,7 @@ export default class DeploymentConfigModal extends React.PureComponent {
 
     // User may fix connection related errors by focusing out from app (turn on wifi, start server etc.)
     // In that case we want to check if errors are fixed when the users focuses back on to the app.
-    // this.scheduleConnectionCheck();
+    this.connectionChecker.scheduleCheck();
   }
 
   onClose = (action = 'cancel', data = null) => {
@@ -150,18 +151,18 @@ export default class DeploymentConfigModal extends React.PureComponent {
   }
 
   fieldError = (meta) => {
-    return meta.error;
+    return meta.touched && meta.error;
   }
 
   endpointConfigurationFieldError = (meta, fieldName) => {
-    return this.getConnectionError(fieldName) || meta.error;
+    return this.getConnectionError(meta, fieldName) || this.fieldError(meta, fieldName);
   }
 
-  getConnectionError(rawFieldName) {
+  getConnectionError(meta, rawFieldName) {
     const { connectionState } = this.state;
 
     // no connection error
-    if (connectionState.type !== CONNECTION_STATE.ERROR) {
+    if (connectionState.type !== CONNECTION_STATE.ERROR || !meta.touched) {
       return;
     }
 

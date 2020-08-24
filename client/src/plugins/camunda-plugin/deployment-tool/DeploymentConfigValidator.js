@@ -8,7 +8,7 @@
  * except in compliance with the MIT License.
  */
 
-import AuthTypes from '../../shared/AuthTypes';
+import AuthTypes from '../shared/AuthTypes';
 
 import pDefer from 'p-defer';
 

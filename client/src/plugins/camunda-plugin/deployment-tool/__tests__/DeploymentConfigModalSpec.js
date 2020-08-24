@@ -19,7 +19,7 @@ import {
 
 import AuthTypes from '../../shared/AuthTypes';
 import DeploymentConfigModal from '../DeploymentConfigModal';
-import DeploymentConfigValidator from '../validation/DeploymentConfigValidator';
+import DeploymentConfigValidator from '../DeploymentConfigValidator';
 
 
 let mounted;

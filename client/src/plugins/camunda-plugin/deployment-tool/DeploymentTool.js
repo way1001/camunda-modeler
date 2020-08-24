@@ -16,7 +16,7 @@ import { default as CamundaAPI, ApiErrors } from '../shared/CamundaAPI';
 import AuthTypes from '../shared/AuthTypes';
 
 import DeploymentConfigModal from './DeploymentConfigModal';
-import DeploymentConfigValidator from './validation/DeploymentConfigValidator';
+import DeploymentConfigValidator from './DeploymentConfigValidator';
 
 import {
   generateId
